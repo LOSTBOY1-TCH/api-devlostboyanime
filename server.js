@@ -50,17 +50,35 @@ app.get("/api/search", async (req, res) => {
 
     const results = Array.isArray(response.data.results) ? response.data.results : []
 
-    const formattedResults = results.map((anime) => ({
-      title: anime.title || "N/A",
-      views: `· ${anime.views || "0"} Views`,
-      url: anime.url || anime.id || "#",
-      tumbnail: anime.image || anime.thumbnail || null,
-      duration: anime.duration || "N/A",
-      author: {
-        name: anime.author?.name || anime.studios?.[0] || "Unknown",
-        avatar: anime.author?.avatar || null,
-      },
-    }))
+    const formattedResults = await Promise.all(
+      results.map(async (anime) => {
+        let detailedInfo = {}
+        try {
+          const infoResponse = await axios.get(`${CONSUMET_API}/anime/gogoanime/info/${anime.id}`)
+          detailedInfo = infoResponse.data
+        } catch (err) {
+          // If detailed info fails, use basic info
+        }
+
+        return {
+          id: anime.id || "N/A",
+          title: anime.title || "N/A",
+          description: detailedInfo.description || anime.description || "No description available",
+          image: anime.image || anime.thumbnail || null,
+          url: anime.url || anime.id || "#",
+          type: detailedInfo.type || anime.type || "N/A",
+          status: detailedInfo.status || "N/A",
+          rating: detailedInfo.rating || "N/A",
+          views: `${anime.views || "0"} Views`,
+          duration: detailedInfo.duration || anime.duration || "N/A",
+          totalEpisodes: detailedInfo.totalEpisodes || "N/A",
+          author: {
+            name: detailedInfo.studios?.[0] || anime.author?.name || "Unknown",
+            avatar: null,
+          },
+        }
+      }),
+    )
 
     res.json({
       status: true,
