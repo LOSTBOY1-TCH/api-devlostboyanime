@@ -44,15 +44,31 @@ app.get("/api/search", async (req, res) => {
       params: { page },
     })
 
+    const results = Array.isArray(response.data.results) ? response.data.results : []
+
+    const formattedResults = results.map((anime) => ({
+      id: anime.id || null,
+      title: anime.title || "N/A",
+      image: anime.image || null,
+      releaseDate: anime.releaseDate || null,
+      description: anime.description || null,
+      status: anime.status || "Unknown",
+      rating: anime.rating || null,
+    }))
+
     res.json({
       success: true,
-      data: response.data,
+      query: query, // Declare the variable before using it
+      page: Number.parseInt(page),
+      total: formattedResults.length,
+      data: formattedResults,
     })
   } catch (error) {
     res.status(500).json({
       success: false,
       error: "Failed to search anime",
       message: error.message,
+      query: req.query.query, // Use req.query.query to access the query parameter
     })
   }
 })
@@ -282,4 +298,3 @@ app.listen(PORT, () => {
 })
 
 export default app
-
