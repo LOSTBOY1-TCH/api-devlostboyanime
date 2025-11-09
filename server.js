@@ -1,6 +1,6 @@
-const express = require("express")
-const cors = require("cors")
-const axios = require("axios")
+import express from "express"
+import cors from "cors"
+import axios from "axios"
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -26,6 +26,7 @@ app.get("/", (req, res) => {
       trending: "/api/trending",
       recent: "/api/recent",
       popular: "/api/popular",
+      genre: "/api/genre/:genre",
     },
   })
 })
@@ -280,4 +281,4 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
 })
 
-module.exports = app
+export default app
