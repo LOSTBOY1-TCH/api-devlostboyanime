@@ -37,7 +37,11 @@ app.get("/api/search", async (req, res) => {
     const { query, page = 1 } = req.query
 
     if (!query) {
-      return res.status(400).json({ error: "Query parameter is required" })
+      return res.status(400).json({
+        status: false,
+        creator: "lostboy",
+        error: "Query parameter is required",
+      })
     }
 
     const response = await axios.get(`${CONSUMET_API}/anime/gogoanime/${query}`, {
@@ -47,28 +51,28 @@ app.get("/api/search", async (req, res) => {
     const results = Array.isArray(response.data.results) ? response.data.results : []
 
     const formattedResults = results.map((anime) => ({
-      id: anime.id || null,
       title: anime.title || "N/A",
-      image: anime.image || null,
-      releaseDate: anime.releaseDate || null,
-      description: anime.description || null,
-      status: anime.status || "Unknown",
-      rating: anime.rating || null,
+      views: `· ${anime.views || "0"} Views`,
+      url: anime.url || anime.id || "#",
+      tumbnail: anime.image || anime.thumbnail || null,
+      duration: anime.duration || "N/A",
+      author: {
+        name: anime.author?.name || anime.studios?.[0] || "Unknown",
+        avatar: anime.author?.avatar || null,
+      },
     }))
 
     res.json({
-      success: true,
-      query: query, // Declare the variable before using it
-      page: Number.parseInt(page),
-      total: formattedResults.length,
-      data: formattedResults,
+      status: true,
+      creator: "lostboy",
+      result: formattedResults,
     })
   } catch (error) {
     res.status(500).json({
-      success: false,
+      status: false,
+      creator: "lostboy",
       error: "Failed to search anime",
       message: error.message,
-      query: req.query.query, // Use req.query.query to access the query parameter
     })
   }
 })
