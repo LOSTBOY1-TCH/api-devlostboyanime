@@ -1,322 +1,137 @@
-import express from "express"
-import cors from "cors"
-import axios from "axios"
+const express = require('express');
+const cors = require('cors');
+const axios = require('axios');
 
-const app = express()
-const PORT = process.env.PORT || 3000
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-app.use(cors())
-app.use(express.json())
+// Middleware
+app.use(cors());
+app.use(express.json());
 
-// Base URLs for anime data sources
-const CONSUMET_API = "https://api.consumet.org"
-const JIKAN_API = "https://api.jikan.moe/v4"
+// Helper function to completely replace all Samuel Rebix data
+function replaceAllCreatorData(data) {
+  if (Array.isArray(data)) {
+    return data.map(item => {
+      if (typeof item === 'object' && item !== null) {
+        const newItem = {};
+        for (const key in item) {
+          if (key === 'creator' || key === 'author') {
+            newItem[key] = 'lostboy';
+          } else if (key === 'uploader' || key === 'owner') {
+            newItem[key] = 'lostboy';
+          } else if (typeof item[key] === 'string') {
+            // Replace Samuel Rebix in any string field
+            newItem[key] = item[key].replace(/Samuel Rebix/gi, 'lostboy');
+          } else {
+            newItem[key] = replaceAllCreatorData(item[key]);
+          }
+        }
+        return newItem;
+      }
+      return item;
+    });
+  } else if (typeof data === 'object' && data !== null) {
+    const newData = {};
+    for (const key in data) {
+      if (key === 'creator' || key === 'author') {
+        newData[key] = 'lostboy';
+      } else if (key === 'uploader' || key === 'owner') {
+        newData[key] = 'lostboy';
+      } else if (typeof data[key] === 'string') {
+        // Replace Samuel Rebix in any string field
+        newData[key] = data[key].replace(/Samuel Rebix/gi, 'lostboy');
+      } else {
+        newData[key] = replaceAllCreatorData(data[key]);
+      }
+    }
+    return newData;
+  }
+  return data;
+}
 
-// Health check endpoint
-app.get("/", (req, res) => {
+// Anime Search - GET
+app.get('/anime/search', async (req, res) => {
+  try {
+    const { q } = req.query;
+    
+    if (!q) {
+      return res.status(400).json({ error: 'Query parameter "q" is required' });
+    }
+
+    const response = await axios.get(`https://api-rebix.vercel.app/api/anisearch?q=${encodeURIComponent(q)}`);
+    
+    let results = response.data || [];
+    results = replaceAllCreatorData(results);
+    
+    const finalResponse = {
+      results: results,
+      info: {
+        creator: 'lostboy',
+        query: q,
+        source: 'Anime Search'
+      }
+    };
+    
+    res.json(finalResponse);
+  } catch (error) {
+    res.status(500).json({ 
+      error: 'Failed to search anime',
+      creator: 'lostboy'
+    });
+  }
+});
+
+// Anime Download - GET
+app.get('/anime/download', async (req, res) => {
+  try {
+    const { url } = req.query;
+    
+    if (!url) {
+      return res.status(400).json({ error: 'Query parameter "url" is required' });
+    }
+
+    const response = await axios.get(`https://api-rebix.vercel.app/api/anidl?url=${encodeURIComponent(url)}`);
+    
+    let results = response.data || {};
+    results = replaceAllCreatorData(results);
+    
+    const finalResponse = {
+      results: results,
+      info: {
+        creator: 'lostboy',
+        url: url,
+        source: 'Anime Download'
+      }
+    };
+    
+    res.json(finalResponse);
+  } catch (error) {
+    res.status(500).json({ 
+      error: 'Failed to download anime',
+      creator: 'lostboy'
+    });
+  }
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
   res.json({
-    status: "online",
-    message: "Anime API is running",
+    message: 'API is running',
+    owner: 'lostboy',
     endpoints: {
-      search: "/api/search?query=naruto",
-      animeInfo: "/api/anime/:id",
-      episodes: "/api/episodes/:id",
-      stream: "/api/stream/:episodeId",
-      download: "/api/download/:episodeId",
-      trending: "/api/trending",
-      recent: "/api/recent",
-      popular: "/api/popular",
-      genre: "/api/genre/:genre",
+      anime_search: '/anime/search?q=boruto',
+      anime_download: '/anime/download?url=https://www.bilibili.tv/id/video/4786363859209728'
     },
-  })
-})
+    status: 'active',
+    creator: 'lostboy'
+  });
+});
 
-// Search anime
-app.get("/api/search", async (req, res) => {
-  try {
-    const { query, page = 1 } = req.query
-
-    if (!query) {
-      return res.status(400).json({
-        status: false,
-        creator: "lostboy",
-        error: "Query parameter is required",
-      })
-    }
-
-    const response = await axios.get(`${CONSUMET_API}/anime/gogoanime/${query}`, {
-      params: { page },
-    })
-
-    const results = Array.isArray(response.data.results) ? response.data.results : []
-
-    const formattedResults = await Promise.all(
-      results.map(async (anime) => {
-        let detailedInfo = {}
-        try {
-          const infoResponse = await axios.get(`${CONSUMET_API}/anime/gogoanime/info/${anime.id}`)
-          detailedInfo = infoResponse.data
-        } catch (err) {
-          // If detailed info fails, use basic info
-        }
-
-        return {
-          id: anime.id || "N/A",
-          title: anime.title || "N/A",
-          description: detailedInfo.description || anime.description || "No description available",
-          image: anime.image || anime.thumbnail || null,
-          url: anime.url || anime.id || "#",
-          type: detailedInfo.type || anime.type || "N/A",
-          status: detailedInfo.status || "N/A",
-          rating: detailedInfo.rating || "N/A",
-          views: `${anime.views || "0"} Views`,
-          duration: detailedInfo.duration || anime.duration || "N/A",
-          totalEpisodes: detailedInfo.totalEpisodes || "N/A",
-          author: {
-            name: detailedInfo.studios?.[0] || anime.author?.name || "Unknown",
-            avatar: null,
-          },
-        }
-      }),
-    )
-
-    res.json({
-      status: true,
-      creator: "lostboy",
-      result: formattedResults,
-    })
-  } catch (error) {
-    res.status(500).json({
-      status: false,
-      creator: "lostboy",
-      error: "Failed to search anime",
-      message: error.message,
-    })
-  }
-})
-
-// Get anime info by ID
-app.get("/api/anime/:id", async (req, res) => {
-  try {
-    const { id } = req.params
-
-    const response = await axios.get(`${CONSUMET_API}/anime/gogoanime/info/${id}`)
-
-    res.json({
-      success: true,
-      data: response.data,
-    })
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch anime info",
-      message: error.message,
-    })
-  }
-})
-
-// Get episodes for anime
-app.get("/api/episodes/:id", async (req, res) => {
-  try {
-    const { id } = req.params
-
-    const response = await axios.get(`${CONSUMET_API}/anime/gogoanime/info/${id}`)
-
-    const episodes = response.data.episodes || []
-
-    res.json({
-      success: true,
-      totalEpisodes: episodes.length,
-      data: episodes,
-    })
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch episodes",
-      message: error.message,
-    })
-  }
-})
-
-// Stream anime episode with quality options
-app.get("/api/stream/:episodeId", async (req, res) => {
-  try {
-    const { episodeId } = req.params
-
-    const response = await axios.get(`${CONSUMET_API}/anime/gogoanime/watch/${episodeId}`)
-
-    const sources = response.data.sources || []
-    const qualities = sources.map((source) => ({
-      quality: source.quality,
-      url: source.url,
-      isM3U8: source.isM3U8,
-    }))
-
-    res.json({
-      success: true,
-      episodeId,
-      sources: qualities,
-      headers: response.data.headers || {},
-      download: response.data.download || null,
-    })
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: "Failed to get streaming links",
-      message: error.message,
-    })
-  }
-})
-
-// Download anime episode in different qualities
-app.get("/api/download/:episodeId", async (req, res) => {
-  try {
-    const { episodeId } = req.params
-    const { quality = "default" } = req.query
-
-    const response = await axios.get(`${CONSUMET_API}/anime/gogoanime/watch/${episodeId}`)
-
-    const sources = response.data.sources || []
-    const downloadLink = response.data.download || null
-
-    // Filter by quality if specified
-    let selectedSource
-    if (quality !== "default") {
-      selectedSource = sources.find((s) => s.quality === quality)
-    }
-
-    if (!selectedSource && sources.length > 0) {
-      selectedSource = sources[0]
-    }
-
-    res.json({
-      success: true,
-      episodeId,
-      quality: selectedSource?.quality || "N/A",
-      downloadUrl: selectedSource?.url || downloadLink,
-      allQualities: sources.map((s) => ({
-        quality: s.quality,
-        url: s.url,
-      })),
-    })
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: "Failed to get download links",
-      message: error.message,
-    })
-  }
-})
-
-// Get trending anime
-app.get("/api/trending", async (req, res) => {
-  try {
-    const { page = 1 } = req.query
-
-    const response = await axios.get(`${JIKAN_API}/top/anime`, {
-      params: { page },
-    })
-
-    res.json({
-      success: true,
-      data: response.data.data,
-    })
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch trending anime",
-      message: error.message,
-    })
-  }
-})
-
-// Get recent episodes
-app.get("/api/recent", async (req, res) => {
-  try {
-    const { page = 1, type = 1 } = req.query
-
-    const response = await axios.get(`${CONSUMET_API}/anime/gogoanime/recent-episodes`, {
-      params: { page, type },
-    })
-
-    res.json({
-      success: true,
-      data: response.data,
-    })
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch recent episodes",
-      message: error.message,
-    })
-  }
-})
-
-// Get popular anime
-app.get("/api/popular", async (req, res) => {
-  try {
-    const { page = 1 } = req.query
-
-    const response = await axios.get(`${CONSUMET_API}/anime/gogoanime/top-airing`, {
-      params: { page },
-    })
-
-    res.json({
-      success: true,
-      data: response.data,
-    })
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch popular anime",
-      message: error.message,
-    })
-  }
-})
-
-// Get anime by genre
-app.get("/api/genre/:genre", async (req, res) => {
-  try {
-    const { genre } = req.params
-    const { page = 1 } = req.query
-
-    const response = await axios.get(`${CONSUMET_API}/anime/gogoanime/genre/${genre}`, {
-      params: { page },
-    })
-
-    res.json({
-      success: true,
-      genre,
-      data: response.data,
-    })
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch anime by genre",
-      message: error.message,
-    })
-  }
-})
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  res.status(500).json({
-    success: false,
-    error: "Internal server error",
-    message: err.message,
-  })
-})
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    error: "Endpoint not found",
-  })
-})
-
+// Start server
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
-})
+  console.log(`Server running on port ${PORT}`);
+  console.log('Owner: lostboy');
+});
 
-export default app
+module.exports = app;
